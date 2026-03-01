@@ -1,6 +1,5 @@
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { ToastItem, ToastType } from "../types";
-
 // Hook to manage toast notifications
 export function useToast() {
   const [toasts, setToasts] = useToastState();
@@ -37,20 +36,16 @@ interface ToastContainerProps {
 
 export function ToastContainer({ toasts }: ToastContainerProps) {
   return (
-    <div className="fixed bottom-6 right-6 z-50 space-y-2 pointer-events-none">
+    <div className="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none">
       {toasts.map((t) => (
         <div
           key={t.id}
           className={`toast toast-${t.type}${t.removing ? " removing" : ""}`}
         >
-          <span>{iconFor(t.type)}</span>
-          <span>{t.msg}</span>
+          <span className="toast-dot" />
+          <span className="toast-msg">{t.msg}</span>
         </div>
       ))}
     </div>
   );
-}
-
-function iconFor(type: ToastType) {
-  return { success: "✓", error: "✗", info: "ℹ", warn: "⚠" }[type];
 }

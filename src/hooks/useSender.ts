@@ -1,25 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import Peer, { DataConnection } from "peerjs";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  CHUNK_SIZE,
-  MAX_BUFFER,
   BUFFER_LOW,
-  ACK_EVERY,
-  PEER_PREFIX,
-  ICE_CONFIG,
+  CHUNK_SIZE,
   FileEntry,
   FileProgress,
+  ICE_CONFIG,
+  MAX_BUFFER,
+  PEER_PREFIX,
   PeerEntry,
   StatusType,
 } from "../types";
 import { deriveKey, encryptChunk, rawKey } from "../utils/crypto";
-import {
-  generateRoomKey,
-  formatBytes,
-  shortPeerId,
-  SpeedTracker,
-  formatRoomKey,
-} from "../utils/helpers";
+import { generateRoomKey, shortPeerId, SpeedTracker } from "../utils/helpers";
 
 interface ConnState {
   conn: DataConnection;
@@ -38,6 +31,7 @@ export interface SenderState {
   peers: PeerEntry[];
   files: FileEntry[];
   fileProgress: Map<string, FileProgress>;
+  isSending: boolean;
 }
 
 export function useSender(
@@ -50,6 +44,7 @@ export function useSender(
     peers: [],
     files: [],
     fileProgress: new Map(),
+    isSending: false,
   });
 
   const peerRef = useRef<Peer | null>(null);
@@ -57,6 +52,7 @@ export function useSender(
   const filesRef = useRef<FileEntry[]>([]);
   const cryptoRef = useRef<CryptoKey | null>(null);
   const destroyedRef = useRef(false);
+  const pausedRef = useRef(false);
 
   // ── helpers to update state without losing React batching ──────
   const setStatus = useCallback((status: StatusType, text: string) => {
@@ -86,7 +82,10 @@ export function useSender(
         activeTransfers: active,
       });
     });
-    setState((s) => ({ ...s, peers }));
+    const isSending = [...connsRef.current.values()].some(
+      (e) => e.transferring,
+    );
+    setState((s) => ({ ...s, peers, isSending }));
   }, []);
 
   const updateProgress = useCallback(
@@ -150,6 +149,7 @@ export function useSender(
       const tracker = new SpeedTracker();
 
       for (let i = fromChunk; i < totalChunks; i++) {
+        if (pausedRef.current) return;
         const live = connsRef.current.get(pid);
         if (!live || !live.conn.open) return;
 
@@ -212,6 +212,7 @@ export function useSender(
       const entry = connsRef.current.get(pid);
       if (!entry || entry.transferring) return;
       entry.transferring = true;
+      refreshPeers();
 
       const offerList = filesRef.current.map((f) => ({
         id: f.id,
@@ -289,7 +290,6 @@ export function useSender(
         });
         refreshPeers();
         onToast(`Receiver connected: ${shortPeerId(pid)}`, "success");
-        if (filesRef.current.length > 0) startTransferToPeer(pid);
       });
       conn.on("data", (d) => onData(pid, d));
       conn.on("error", () => {
@@ -329,6 +329,7 @@ export function useSender(
       peers: [],
       files: [],
       fileProgress: new Map(),
+      isSending: false,
     });
 
     peer.on("open", () => {
@@ -387,6 +388,15 @@ export function useSender(
     });
   }, []);
 
+  const pauseAll = useCallback(() => {
+    pausedRef.current = true;
+    connsRef.current.forEach((entry) => {
+      entry.transferring = false;
+    });
+    setState((s) => ({ ...s, isSending: false }));
+    onToast("Transfer paused.", "warn");
+  }, [onToast]);
+
   const sendAll = useCallback(() => {
     if (filesRef.current.length === 0) {
       onToast("No files queued.", "warn");
@@ -396,6 +406,7 @@ export function useSender(
       onToast("No receivers connected yet.", "warn");
       return;
     }
+    pausedRef.current = false;
     connsRef.current.forEach((entry, pid) => {
       if (!entry.transferring) startTransferToPeer(pid);
     });
@@ -419,5 +430,14 @@ export function useSender(
     };
   }, []);
 
-  return { state, init, addFiles, removeFile, sendAll, clearFiles, destroy };
+  return {
+    state,
+    init,
+    addFiles,
+    removeFile,
+    sendAll,
+    pauseAll,
+    clearFiles,
+    destroy,
+  };
 }

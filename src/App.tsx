@@ -38,20 +38,30 @@ export default function App() {
   }, []);
 
   // ── Navigation ─────────────────────────────────────────────────
+  const goBack = useCallback(() => {
+    if (screen === "landing") return;
+    sender.destroy();
+    receiver.destroy();
+    setScreen("landing");
+    history.replaceState(null, "", location.pathname);
+  }, [screen, sender, receiver]);
+
   const goToSend = useCallback(() => {
+    history.pushState({ appScreen: "sender" }, "");
     setScreen("sender");
     sender.init();
   }, [sender]);
 
   const goToReceive = useCallback(() => {
+    history.pushState({ appScreen: "receiver" }, "");
     setScreen("receiver");
   }, []);
 
-  const goBack = useCallback(() => {
-    sender.destroy();
-    receiver.destroy();
-    setScreen("landing");
-  }, [sender, receiver]);
+  // ── Hardware / browser back button (mobile, iPad, desktop) ─────
+  useEffect(() => {
+    window.addEventListener("popstate", goBack);
+    return () => window.removeEventListener("popstate", goBack);
+  }, [goBack]);
 
   // ── Receiver start callback ───────────────────────────────────
   const handleReceiverStart = useCallback(
@@ -91,11 +101,10 @@ export default function App() {
             senderState={sender.state}
             addFiles={(files) => {
               sender.addFiles(files);
-              // If peers already connected, auto-send
-              if (sender.state.peers.length > 0) sender.sendAll();
             }}
             removeFile={sender.removeFile}
             sendAll={sender.sendAll}
+            pauseAll={sender.pauseAll}
             clearFiles={sender.clearFiles}
             onToast={toast}
           />

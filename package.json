@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview",
-    "deploy": "npm run build:gh-pages && npx gh-pages -d dist"
+    "build:gh-pages": "tsc && vite build --base=/send-file/",
+    "preview": "vite preview"
   },
   "engines": {
     "node": ">=22.0.0",

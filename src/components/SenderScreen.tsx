@@ -1,5 +1,5 @@
-import { useCallback, useRef } from "react";
-import { Upload, Copy, Link2, Send, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Upload, Copy, Link2, Send, Trash2, X } from "lucide-react";
 import { SenderState } from "../hooks/useSender";
 import { StatusType, FileEntry, FileProgress, PeerEntry } from "../types";
 import { formatBytes, fileIcon, escHtml } from "../utils/helpers";
@@ -155,7 +155,6 @@ function DropZone({ onFiles }: { onFiles: (files: File[]) => void }) {
   );
 }
 
-import { useState } from "react";
 function useDragState() {
   return useState(false);
 }
@@ -166,6 +165,7 @@ interface SenderScreenProps {
   addFiles: (files: File[]) => void;
   removeFile: (id: string) => void;
   sendAll: () => void;
+  pauseAll: () => void;
   clearFiles: () => void;
   onToast: (msg: string, type?: "success" | "error" | "info" | "warn") => void;
 }
@@ -175,11 +175,31 @@ export function SenderScreen({
   addFiles,
   removeFile,
   sendAll,
+  pauseAll,
   clearFiles,
   onToast,
 }: SenderScreenProps) {
-  const { roomKey, status, statusText, peers, files, fileProgress } =
+  const { roomKey, status, statusText, peers, files, fileProgress, isSending } =
     senderState;
+
+  const [activeTab, setActiveTab] = useState<"queue" | "sent">("queue");
+
+  const pendingFiles = files.filter((f) => !fileProgress.get(f.id)?.done);
+  const sentFiles = files.filter((f) => fileProgress.get(f.id)?.done === true);
+
+  // Auto-switch to Sent tab when all pending files complete
+  useEffect(() => {
+    if (sentFiles.length > 0 && pendingFiles.length === 0 && !isSending) {
+      setActiveTab("sent");
+    }
+  }, [sentFiles.length, pendingFiles.length, isSending]);
+
+  // Auto-switch back to Queue when new files are added
+  useEffect(() => {
+    if (pendingFiles.length > 0) {
+      setActiveTab("queue");
+    }
+  }, [pendingFiles.length]);
 
   const isWaiting = status === "waiting" || status === "offline";
 
@@ -216,20 +236,22 @@ export function SenderScreen({
               <div className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-2">
                 Your Room Key
               </div>
-              <div className="flex items-center gap-3">
-                <span className="room-key-display text-3xl font-mono font-bold tracking-widest text-brand-300 select-all">
-                  {roomKey}
-                </span>
-                <button
-                  onClick={copyKey}
-                  className="icon-btn"
-                  title="Copy room key"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="room-key-display text-3xl font-mono font-bold tracking-widest text-brand-300 select-all">
+                    {roomKey}
+                  </span>
+                  <button
+                    onClick={copyKey}
+                    className="icon-btn flex-shrink-0"
+                    title="Copy room key"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
                 <button
                   onClick={copyLink}
-                  className="inline-flex items-center gap-1.5 text-xs bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-white px-2.5 py-1.5 rounded-lg transition"
+                  className="self-start inline-flex items-center gap-1.5 text-xs bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-white px-2.5 py-1.5 rounded-lg transition"
                 >
                   <Link2 className="w-3.5 h-3.5" />
                   Share Link
@@ -264,43 +286,107 @@ export function SenderScreen({
           </div>
         </div>
 
-        {/* Drop Zone */}
-        <DropZone
-          onFiles={(files) => {
-            addFiles(files);
-            onToast(
-              `Added ${files.length} file${files.length > 1 ? "s" : ""}`,
-              "success",
-            );
-          }}
-        />
-
-        {/* Transfer Queue */}
+        {/* Tab bar — shown once files are added */}
         {files.length > 0 && (
-          <div>
-            <div className="text-xs uppercase tracking-widest text-gray-500 font-semibold mb-3">
-              Files to Send
-            </div>
-            <div className="space-y-3">
-              {files.map((f) => (
+          <div className="flex border-b border-white/10">
+            <button
+              onClick={() => setActiveTab("queue")}
+              className={`px-4 py-2.5 text-sm font-medium transition -mb-px border-b-2 ${
+                activeTab === "queue"
+                  ? "text-white border-brand-400"
+                  : "text-gray-500 border-transparent hover:text-gray-300"
+              }`}
+            >
+              Queue
+              {pendingFiles.length > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-xs bg-brand-600/30 text-brand-300">
+                  {pendingFiles.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("sent")}
+              className={`px-4 py-2.5 text-sm font-medium transition -mb-px border-b-2 ${
+                activeTab === "sent"
+                  ? "text-white border-green-400"
+                  : "text-gray-500 border-transparent hover:text-gray-300"
+              }`}
+            >
+              Sent
+              {sentFiles.length > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-xs bg-green-600/30 text-green-400">
+                  {sentFiles.length}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Queue Tab — always visible before any files, hidden on Sent tab */}
+        {(files.length === 0 || activeTab === "queue") && (
+          <>
+            <DropZone
+              onFiles={(newFiles) => {
+                addFiles(newFiles);
+                onToast(
+                  `Added ${newFiles.length} file${
+                    newFiles.length > 1 ? "s" : ""
+                  }`,
+                  "success",
+                );
+              }}
+            />
+            {pendingFiles.length > 0 && (
+              <>
+                <div className="space-y-3">
+                  {pendingFiles.map((f) => (
+                    <SenderFileCard
+                      key={f.id}
+                      file={f}
+                      progress={fileProgress.get(f.id)}
+                      onRemove={removeFile}
+                    />
+                  ))}
+                </div>
+                <div className="mt-4 flex gap-3 justify-end">
+                  <button onClick={clearFiles} className="btn-ghost">
+                    <Trash2 className="w-4 h-4" />
+                    Clear
+                  </button>
+                  {isSending ? (
+                    <button onClick={pauseAll} className="btn-ghost">
+                      <X className="w-4 h-4" />
+                      Pause
+                    </button>
+                  ) : (
+                    <button onClick={sendAll} className="btn-primary">
+                      <Send className="w-4 h-4" strokeWidth={2.5} />
+                      Send to All Receivers
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {/* Sent Tab */}
+        {files.length > 0 && activeTab === "sent" && (
+          <div className="space-y-3">
+            {sentFiles.length === 0 ? (
+              <div className="text-sm text-gray-500 italic">
+                No files sent yet.
+              </div>
+            ) : (
+              sentFiles.map((f) => (
                 <SenderFileCard
                   key={f.id}
                   file={f}
                   progress={fileProgress.get(f.id)}
                   onRemove={removeFile}
                 />
-              ))}
-            </div>
-            <div className="mt-4 flex gap-3">
-              <button onClick={sendAll} className="btn-primary">
-                <Send className="w-4 h-4" strokeWidth={2.5} />
-                Send to All Receivers
-              </button>
-              <button onClick={clearFiles} className="btn-ghost">
-                <Trash2 className="w-4 h-4" />
-                Clear
-              </button>
-            </div>
+              ))
+            )}
           </div>
         )}
       </div>

@@ -6,4 +6,7 @@ import react from "@vitejs/plugin-react";
 // (use the `build:gh-pages` npm script which passes the flag automatically)
 export default defineConfig({
   plugins: [react()],
+  build: {
+    outDir: "docs",
+  },
 });
