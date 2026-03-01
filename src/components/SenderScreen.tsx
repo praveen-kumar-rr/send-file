@@ -251,7 +251,7 @@ export function SenderScreen({
                 </div>
                 <button
                   onClick={copyLink}
-                  className="self-start inline-flex items-center gap-1.5 text-xs bg-white/5 border border-white/10 hover:bg-white/10 text-gray-400 hover:text-white px-2.5 py-1.5 rounded-lg transition"
+                  className="self-start share-link-btn"
                 >
                   <Link2 className="w-3.5 h-3.5" />
                   Share Link
